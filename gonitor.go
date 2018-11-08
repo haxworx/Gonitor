@@ -3,7 +3,7 @@ package main;
 import "container/list"
 import "io/ioutil"
 import "log"
-import "path"
+import "path/filepath"
 import "fmt"
 import "os"
 import "time"
@@ -27,7 +27,7 @@ type Monitor struct {
 	Cwd string
 
 	stateDir string
-	starePath string
+	stateFile string
 
 	Previous *list.List
 	OnAdd func(string)
@@ -48,7 +48,7 @@ func (m *Monitor) ReadFiles(list *list.List, dirpath string) *list.List {
 		base := f.Name();
 		if base[0] == '.' { continue; }
 
-		path := path.Join(dirpath, base);
+		path := filepath.Join(dirpath, base);
 		if f.Mode() & ModeDiscard == 0 {
 			file := File { Path: path, Mtime: f.ModTime().Unix(), Size: f.Size() };
 	                list.PushBack(file);
@@ -144,12 +144,40 @@ func (m *Monitor) Init() {
 	m.Cwd, err = os.Getwd(); if err != nil {
 		log.Fatal(err)
 	}
-	m.stateDir = path.Join(m.Cwd, DefaultStateDir, DefaultStateFile)
+
+	m.stateDir = filepath.Join(m.Cwd, DefaultStateDir)
+	if _, err = os.Stat(m.stateDir); os.IsNotExist(err) {
+		err = os.Mkdir(m.stateDir, 0755); if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	m.stateFile = filepath.Join(m.stateDir, DefaultStateFile)
 
 	m.SetDirectory(m.Cwd)
 }
 
+func (m *Monitor) LoadState() {
+	m.Previous = list.New()
+
+	if _, err := os.Stat(m.stateFile); os.IsNotExist(err) {
+		return
+	}
+
+	f, err := os.Open(m.stateFile); if err != nil {
+		log.Fatal(err)
+	}
+
+	defer f.Close()
+}
+
 func (m *Monitor) SaveState() {
+	f, err := os.Create(m.stateFile); if err != nil {
+		log.Fatal(err)
+	}
+
+	defer f.Close();
+
 
 }
 
@@ -160,8 +188,8 @@ func (m *Monitor) Watch() {
 		time.Sleep(3 * time.Second);
 		current := m.Scan()
 		m.Compare(current);
-		m.SaveState();
 		m.Previous = current;
+		m.SaveState();
 	}
 }
 
