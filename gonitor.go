@@ -2,6 +2,7 @@ package main;
 
 import "container/list"
 import "io/ioutil"
+import "bufio"
 import "log"
 import "path/filepath"
 import "fmt"
@@ -12,8 +13,6 @@ const (
 	DefaultStateDir = ".monitor"
 	DefaultStateFile = "statefile"
 )
-
-const ModeDiscard = os.ModeDir | os.ModeSymlink | os.ModeNamedPipe | os.ModeSocket | os.ModeDevice
 
 type File struct {
 	Path string
@@ -26,10 +25,12 @@ type Monitor struct {
 
 	Cwd string
 
+	pollInterval time.Duration
+
 	stateDir string
 	stateFile string
 
-	Previous *list.List
+	filesPrevious *list.List
 	OnAdd func(string)
 	OnDel func(string)
 	OnMod func(string)
@@ -43,6 +44,8 @@ func (m *Monitor) ReadFiles(list *list.List, dirpath string) *list.List {
 	files, err := ioutil.ReadDir(dirpath); if err != nil {
 		// log.Fatal(err)
 	}
+
+	const ModeDiscard = os.ModeDir | os.ModeSymlink | os.ModeNamedPipe | os.ModeSocket | os.ModeDevice
 
 	for _, f := range files {
 		base := f.Name();
@@ -82,7 +85,6 @@ func fileExists(list *list.List, path string) bool {
 }
 
 func (m *Monitor) findModFiles(ch chan bool, first *list.List, second *list.List) {
-	fmt.Println("START MOD");
 	for l2 := second.Front(); l2 != nil; l2 = l2.Next() {
 		filename := l2.Value.(File).Path;
 		for l1 := first.Front(); l1 != nil; l1 = l1.Next() {
@@ -99,7 +101,6 @@ func (m *Monitor) findModFiles(ch chan bool, first *list.List, second *list.List
 }
 
 func (m *Monitor) findAddFiles(ch chan bool, first *list.List, second *list.List) {
-	fmt.Println("START ADD");
 	for l2 := second.Front(); l2 != nil; l2 = l2.Next() {
 		filename := l2.Value.(File).Path;
 		if !fileExists(first, filename) {
@@ -113,7 +114,6 @@ func (m *Monitor) findAddFiles(ch chan bool, first *list.List, second *list.List
 }
 
 func (m *Monitor) findDelFiles(ch chan bool, first *list.List, second *list.List) {
-	fmt.Println("START DEL");
 	for l1 := first.Front(); l1 != nil; l1 = l1.Next() {
 		filename := l1.Value.(File).Path;
 		if !fileExists(second, filename) {
@@ -126,15 +126,14 @@ func (m *Monitor) findDelFiles(ch chan bool, first *list.List, second *list.List
 	ch <- true
 }
 
-func (m *Monitor) Compare(current *list.List) {
+func (m *Monitor) Compare(filesPrevious *list.List, filesCurrent *list.List) {
 	ch := make(chan bool, 3);
 
-	go m.findDelFiles(ch, m.Previous, current);
-	go m.findModFiles(ch, m.Previous, current);
-	go m.findAddFiles(ch, m.Previous, current);
+	go m.findDelFiles(ch, filesPrevious, filesCurrent);
+	go m.findModFiles(ch, filesPrevious, filesCurrent);
+	go m.findAddFiles(ch, filesPrevious, filesCurrent);
 
 	for i := 0; i < cap(ch); i++ {
-		fmt.Println("AYE");
 		<-ch
 	}
 }
@@ -157,8 +156,8 @@ func (m *Monitor) Init() {
 	m.SetDirectory(m.Cwd)
 }
 
-func (m *Monitor) LoadState() {
-	m.Previous = list.New()
+func (m *Monitor) LoadSavedState() {
+	m.filesPrevious = list.New()
 
 	if _, err := os.Stat(m.stateFile); os.IsNotExist(err) {
 		return
@@ -168,28 +167,43 @@ func (m *Monitor) LoadState() {
 		log.Fatal(err)
 	}
 
+	scan := bufio.NewScanner(f);
+
+	for scan.Scan() {
+		file := File {}
+		_, err = fmt.Sscanf(scan.Text(), "%d\t%d\t%s\n", &file.Mtime, &file.Size, &file.Path); if err != nil {
+			log.Fatal(err)
+		}
+		m.filesPrevious.PushBack(file);
+	}
+
 	defer f.Close()
 }
 
-func (m *Monitor) SaveState() {
+func (m *Monitor) SaveState(files *list.List) {
 	f, err := os.Create(m.stateFile); if err != nil {
 		log.Fatal(err)
 	}
 
 	defer f.Close();
 
-
+	for el := files.Front(); el != nil; el = el.Next() {
+		file := el.Value.(File)
+		_, err = fmt.Fprintf(f, "%d\t%d\t%s\n", file.Mtime, file.Size, file.Path); if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func (m *Monitor) Watch() {
-	m.Previous = m.Scan()
+	m.LoadSavedState()
 
 	for {
-		time.Sleep(3 * time.Second);
-		current := m.Scan()
-		m.Compare(current);
-		m.Previous = current;
-		m.SaveState();
+		filesCurrent := m.Scan()
+		m.Compare(m.filesPrevious, filesCurrent);
+		m.SaveState(filesCurrent);
+		m.filesPrevious = filesCurrent;
+		time.Sleep(m.pollInterval);
 	}
 }
 
@@ -205,10 +219,16 @@ func OnMod(filepath string) {
 	fmt.Printf("MOD: %s\n", filepath);
 }
 
+func (m *Monitor) SetPollInterval(seconds int) {
+	m.pollInterval = time.Duration(seconds) * time.Second;
+}
+
 func main() {
 	m := new(Monitor);
+
 	m.Init();
-	fmt.Println("BEGIN");
+
+	m.SetPollInterval(3);
 
 	m.OnAdd = OnAdd
 	m.OnDel = OnDel
