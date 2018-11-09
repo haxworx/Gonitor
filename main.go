@@ -2,7 +2,6 @@ package main
 
 import "flag"
 import "fmt"
-import "os"
 import "./monitor"
 
 func OnAdd(filepath string) {
