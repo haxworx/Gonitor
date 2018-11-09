@@ -8,6 +8,7 @@ import "path/filepath"
 import "fmt"
 import "os"
 import "time"
+import "errors"
 import "../system"
 
 const (
@@ -165,6 +166,8 @@ func (m *Monitor) LoadSavedState() {
 		log.Fatal(err)
 	}
 
+	defer f.Close()
+
 	scan := bufio.NewScanner(f);
 
 	for scan.Scan() {
@@ -174,12 +177,13 @@ func (m *Monitor) LoadSavedState() {
 		}
 		m.filesPrevious.PushBack(file);
 	}
-
-	defer f.Close()
 }
 
 func (m *Monitor) SaveState(files *list.List) {
 	tmpPath := system.TempFileName("monitor")
+	if tmpPath == "" {
+		log.Fatal(errors.New("system.TempFileName"))
+	}
 
 	f, err := os.Create(tmpPath); if err != nil {
 		log.Fatal(err)
