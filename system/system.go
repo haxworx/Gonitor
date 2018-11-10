@@ -17,9 +17,8 @@ func randomString() string {
 }
 
 func TempFileName(pattern string) string {
-	filename := pattern + randomString() + ".tmp"
-
 	for i := 0; i < 1000; i++ {
+		filename := pattern + randomString() + ".tmp"
 		path := filepath.Join(os.TempDir(), filename)
 		if _, err := os.Stat(path); !os.IsExist(err) {
 			return path
