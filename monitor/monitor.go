@@ -69,7 +69,7 @@ func (m *Monitor) readFiles(list *list.List, dirpath string) *list.List {
 	return list
 }
 
-func (m *Monitor) Scan() *list.List {
+func (m *Monitor) scan() *list.List {
 	if m.workingDirectory == "" {
 		log.Fatal("No directory set.")
 	}
@@ -132,7 +132,7 @@ func (m *Monitor) findDelFiles(ch chan bool, first *list.List, second *list.List
 	ch <- true
 }
 
-func (m *Monitor) Compare(filesPrevious *list.List, filesCurrent *list.List) {
+func (m *Monitor) compare(filesPrevious *list.List, filesCurrent *list.List) {
 	ch := make(chan bool, 3)
 
 	go m.findDelFiles(ch, filesPrevious, filesCurrent)
@@ -183,7 +183,7 @@ func (m *Monitor) ClearStateFiles() bool {
 	return true
 }
 
-func (m *Monitor) LoadSavedState() {
+func (m *Monitor) loadSavedState() {
 	m.filesPrevious = list.New()
 
 	if !m.stateFile.enabled {
@@ -213,7 +213,7 @@ func (m *Monitor) LoadSavedState() {
 	}
 }
 
-func (m *Monitor) SaveState(files *list.List) {
+func (m *Monitor) saveState(files *list.List) {
 	if !m.stateFile.enabled {
 		return
 	}
@@ -243,12 +243,12 @@ func (m *Monitor) SaveState(files *list.List) {
 
 
 func (m *Monitor) Watch() {
-	m.LoadSavedState()
+	m.loadSavedState()
 
 	for {
-		filesCurrent := m.Scan()
-		m.Compare(m.filesPrevious, filesCurrent)
-		m.SaveState(filesCurrent)
+		filesCurrent := m.scan()
+		m.compare(m.filesPrevious, filesCurrent)
+		m.saveState(filesCurrent)
 		m.filesPrevious = filesCurrent
 		time.Sleep(m.pollInterval)
 	}
