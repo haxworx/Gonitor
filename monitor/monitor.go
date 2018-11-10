@@ -11,15 +11,16 @@ import "time"
 import "errors"
 import "../system"
 
-const (
-	DefaultStateDir  = ".monitor"
-	DefaultStateFile = "statefile"
-)
-
 type File struct {
 	Path  string
 	Mtime int64
 	Size  int64
+}
+
+type statefile struct {
+	directory string
+	fullpath  string
+	enabled  bool
 }
 
 type Monitor struct {
@@ -27,8 +28,7 @@ type Monitor struct {
 
 	pollInterval time.Duration
 
-	stateDir  string
-	stateFile string
+	stateFile statefile
 
 	filesPrevious *list.List
 
@@ -43,7 +43,7 @@ func New() *Monitor {
 	return m
 }
 
-func (m *Monitor) ReadFiles(list *list.List, dirpath string) *list.List {
+func (m *Monitor) readFiles(list *list.List, dirpath string) *list.List {
 	files, err := ioutil.ReadDir(dirpath)
 	if err != nil {
 		// log.Fatal(err)
@@ -63,7 +63,7 @@ func (m *Monitor) ReadFiles(list *list.List, dirpath string) *list.List {
 			list.PushBack(file)
 			continue
 		}
-		m.ReadFiles(list, path)
+		m.readFiles(list, path)
 	}
 
 	return list
@@ -75,7 +75,7 @@ func (m *Monitor) Scan() *list.List {
 	}
 
 	list := list.New()
-	list = m.ReadFiles(list, m.workingDirectory)
+	list = m.readFiles(list, m.workingDirectory)
 
 	return list
 }
@@ -145,23 +145,36 @@ func (m *Monitor) Compare(filesPrevious *list.List, filesCurrent *list.List) {
 }
 
 func (m *Monitor) SetDirectory(directory string) {
+	m.workingDirectory = directory
+}
+
+func (m *Monitor) SetStateFile(directory string, filename string) {
 	var err error
 
-	m.stateDir = filepath.Join(directory, DefaultStateDir)
-	if _, err = os.Stat(m.stateDir); os.IsNotExist(err) {
-		err = os.Mkdir(m.stateDir, 0755)
+	if m.workingDirectory == "" {
+		log.Printf("No working directory set.")
+		os.Exit(1 << 0)
+	}
+
+	m.stateFile.directory = filepath.Join(m.workingDirectory, directory)
+	if _, err = os.Stat(m.stateFile.directory); os.IsNotExist(err) {
+		err = os.Mkdir(m.stateFile.directory, 0755)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	m.stateFile = filepath.Join(m.stateDir, DefaultStateFile)
-	m.workingDirectory = directory
+	m.stateFile.fullpath = filepath.Join(m.stateFile.directory, filename)
+
+	m.stateFile.enabled = true;
 }
 
 func (m *Monitor) ClearStateFiles() bool {
-	os.Remove(m.stateFile)
-	err := os.RemoveAll(m.stateDir)
+	if !m.stateFile.enabled {
+		return false
+	}
+	os.Remove(m.stateFile.fullpath)
+	err := os.RemoveAll(m.stateFile.directory)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -173,11 +186,15 @@ func (m *Monitor) ClearStateFiles() bool {
 func (m *Monitor) LoadSavedState() {
 	m.filesPrevious = list.New()
 
-	if _, err := os.Stat(m.stateFile); os.IsNotExist(err) {
+	if !m.stateFile.enabled {
 		return
 	}
 
-	f, err := os.Open(m.stateFile)
+	if _, err := os.Stat(m.stateFile.fullpath); os.IsNotExist(err) {
+		return
+	}
+
+	f, err := os.Open(m.stateFile.fullpath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,6 +214,10 @@ func (m *Monitor) LoadSavedState() {
 }
 
 func (m *Monitor) SaveState(files *list.List) {
+	if !m.stateFile.enabled {
+		return
+	}
+
 	tmpPath := system.TempFileName("monitor")
 	if tmpPath == "" {
 		log.Fatal(errors.New("system.TempFileName"))
@@ -216,9 +237,10 @@ func (m *Monitor) SaveState(files *list.List) {
 	}
 
 	f.Close()
-	system.Copy(tmpPath, m.stateFile)
+	system.Copy(tmpPath, m.stateFile.fullpath)
 	os.Remove(tmpPath)
 }
+
 
 func (m *Monitor) Watch() {
 	m.LoadSavedState()
