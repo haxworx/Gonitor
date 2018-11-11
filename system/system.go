@@ -5,20 +5,35 @@ import "io"
 import "fmt"
 import "time"
 import "math/rand"
-import "strconv"
+import "strings"
 import "path/filepath"
 
-func randomString() string {
-	rand.Seed(time.Now().UnixNano() + int64(os.Getpid()))
+func randomString(length int) string {
+	var sb strings.Builder
+	symbols := []byte{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+		'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+		'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'}
 
-	str := strconv.Itoa(10000 + rand.Intn(10000))
+	nanoseconds := time.Now().UnixNano()
 
-	return str
+	rand.Seed(nanoseconds + int64(os.Getpid()))
+
+	for i := 0; i < length; i++ {
+		ch := byte(symbols[rand.Intn(len(symbols))])
+		nanoseconds = time.Now().UnixNano()
+		if nanoseconds%2 == 0 {
+			ch += 32
+		}
+		sb.WriteByte(ch)
+	}
+	return sb.String()
 }
 
 func TempFileName(pattern string) string {
 	for i := 0; i < 1000; i++ {
-		filename := pattern + randomString() + ".tmp"
+		rand.Seed(time.Now().UnixNano())
+		rng := 16 - rand.Intn(16-8)
+		filename := pattern + "-" + randomString(rng) + ".tmp"
 		path := filepath.Join(os.TempDir(), filename)
 		if _, err := os.Stat(path); !os.IsExist(err) {
 			return path
