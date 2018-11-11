@@ -24,10 +24,10 @@ func OnMod(filepath string) {
 func main() {
 	pollInterval := flag.Int("i", 3, "Set poll interval")
 	clearStateFiles := flag.Bool("c", false, "Clear existing state files.")
-	directory := flag.String("d", ".", "Set directory to monitor.")
+	directory := flag.String("dir", ".", "Set directory to monitor.")
 	stateFileEnabled := flag.Bool("s", true, "Disable state file use.")
-	stateFileDirectory := flag.String("-d", DefaultStateDirectory, "Set custom state file directory.");
-	stateFileName := flag.String("-n", DefaultStateFile, "Set custom state file name.")
+	stateFileDirectory := flag.String("d", DefaultStateDirectory, "Set custom state file directory.");
+	stateFileName := flag.String("n", DefaultStateFile, "Set custom state file name.")
 
 	flag.Parse()
 
