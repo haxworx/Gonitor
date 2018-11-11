@@ -32,7 +32,7 @@ func randomString(length int) string {
 func TempFileName(pattern string) string {
 	for i := 0; i < 1000; i++ {
 		rand.Seed(time.Now().UnixNano())
-		rng := 16 - rand.Intn(16-8)
+		rng := 8 + rand.Intn(16-8)
 		filename := pattern + "-" + randomString(rng) + ".tmp"
 		path := filepath.Join(os.TempDir(), filename)
 		if _, err := os.Stat(path); !os.IsExist(err) {
